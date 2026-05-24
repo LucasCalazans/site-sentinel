@@ -52,7 +52,13 @@ async function runAllApps(env: Env, cron: string) {
 
     for (const app of APPS) {
         const checks = app.buildChecks(env, cron);
-        const results = await runChecks(checks, { fetch: globalThis.fetch, now: Date.now });
+        // fetch precisa estar com `this` ligado ao globalThis no Worker —
+        // passar a ref nua quebra com "Illegal invocation". Wrapamos em arrow
+        // pra preservar o binding. Mesma defesa pra Date.now por uniformidade.
+        const results = await runChecks(checks, {
+            fetch: (input, init) => globalThis.fetch(input, init),
+            now: () => Date.now(),
+        });
         const failing = results.filter((r) => r.severity !== 'ok');
 
         if (failing.length > 0 && env.DISCORD_WEBHOOK_URL) {
