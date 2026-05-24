@@ -1,0 +1,33 @@
+# Template de wrangler.toml. Copie pra `wrangler.toml` (gitignored) e ajuste.
+#
+# Antes do primeiro deploy:
+#   1. cp wrangler.example.toml wrangler.toml
+#   2. wrangler login
+#   3. wrangler secret put DISCORD_WEBHOOK_URL
+#   4. npm run deploy
+#
+# Pra adicionar um app real, registre um AppConfig em src/index.ts e adicione
+# as vars dele em [vars] abaixo. Veja examples/sonda/ pra um config completo.
+
+name = "site-sentinel"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+
+# Cron "leve" a cada 5min: roda checks rápidos (latência, redirect chain,
+# content sentinel). Free tier do Worker dá 100k requests/dia — ~288 ticks
+# diários, com 4 checks fazendo 1-2 fetches cada, sobra muito.
+#
+# Cron horário ('0 * * * *') é a janela pra checks pesados (ex.: baixar um
+# binário inteiro e validar SHA-256). Filtre por `event.cron` no
+# buildChecks(env, cron) do seu app.
+[triggers]
+crons = ["*/5 * * * *", "0 * * * *"]
+
+[vars]
+# Adicione aqui as vars públicas do seu app (URLs monitoradas, thresholds, ...).
+# Secrets (webhooks, tokens) vão via `wrangler secret put`.
+#
+# Exemplo:
+#   MY_LANDING_URL = "https://example.com"
+#   PERF_WARN_MS = "2500"
+#   PERF_CRITICAL_MS = "8000"

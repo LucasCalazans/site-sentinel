@@ -1,0 +1,11 @@
+node_modules/
+.wrangler/
+dist/
+# wrangler.toml fica local (cada deploy tem suas próprias vars e o `name` do
+# Worker). Versionamos só o template em wrangler.example.toml.
+wrangler.toml
+.dev.vars
+.env
+.env.local
+*.log
+.DS_Store

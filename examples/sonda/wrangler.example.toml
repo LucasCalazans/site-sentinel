@@ -1,0 +1,19 @@
+# Trecho de wrangler.toml para o exemplo Sonda. Cole as seções abaixo no seu
+# wrangler.toml real (na raiz do projeto) e ajuste o `name` do Worker.
+
+name = "site-sentinel"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+
+# Cron leve a cada 5min (performance, redirect chain, content sentinels) +
+# cron horário (integrity baixa o .exe inteiro e compara SHA-256).
+[triggers]
+crons = ["*/5 * * * *", "0 * * * *"]
+
+[vars]
+SONDA_LANDING_URL = "https://sonda-recover.com"
+SONDA_API_URL = "https://api.sonda-recover.com"
+SONDA_DOWNLOAD_URL = "https://sonda-recover.com/downloads/sonda-setup-x64.exe"
+SONDA_RELEASES_REPO = "LucasCalazans/sonda-releases"
+PERF_WARN_MS = "2500"
+PERF_CRITICAL_MS = "8000"
