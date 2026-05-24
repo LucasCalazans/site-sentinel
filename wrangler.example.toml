@@ -2,9 +2,13 @@
 #
 # Antes do primeiro deploy:
 #   1. cp wrangler.example.toml wrangler.toml
-#   2. wrangler login
-#   3. wrangler secret put DISCORD_WEBHOOK_URL
+#   2. npm run login                          # = wrangler login (do node_modules)
+#   3. npm run secret put DISCORD_WEBHOOK_URL # cole o webhook do canal de alerts
 #   4. npm run deploy
+#
+# Nota: o binário `wrangler` é instalado local (node_modules/.bin/). Use os
+# scripts `npm run *` acima — `wrangler` puro só funciona se você instalou
+# global (`npm i -g wrangler`).
 #
 # Pra adicionar um app real, registre um AppConfig em src/index.ts e adicione
 # as vars dele em [vars] abaixo. Veja examples/sonda/ pra um config completo.

@@ -25,7 +25,7 @@ Caso real usado pra desenvolver/validar o site-sentinel. Monitora a landing est√
     ];
     ```
 
-3. `wrangler secret put DISCORD_WEBHOOK_URL` (cole o webhook do canal de alerts).
+3. `npm run secret put DISCORD_WEBHOOK_URL` (cole o webhook do canal de alerts).
 4. `npm run deploy`.
 
 ## Adaptando pro seu projeto

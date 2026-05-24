@@ -54,10 +54,12 @@ git clone https://github.com/<seu-usuario>/site-sentinel
 cd site-sentinel
 npm install
 cp wrangler.example.toml wrangler.toml
-wrangler login
-wrangler secret put DISCORD_WEBHOOK_URL   # cole o webhook do canal de alerts
+npm run login                              # = wrangler login
+npm run secret put DISCORD_WEBHOOK_URL     # cole o webhook do canal de alerts
 npm run deploy
 ```
+
+> O `wrangler` fica em `node_modules/.bin/` (instalado local pelo `npm install`). Os scripts `npm run *` acima resolvem o caminho — se preferir o binário direto, use `npx wrangler <comando>`. **Não rode `wrangler` puro**: vai dar `command not found` a menos que você tenha instalado global com `npm i -g wrangler`.
 
 Sem nenhum app registrado, o Worker sobe mas não monitora nada (logs ficam em silêncio). Veja a próxima seção pra adicionar um.
 
@@ -124,8 +126,9 @@ export function buildMyAppChecks(env: MyAppEnv, cron: string): Check[] {
 ```bash
 npm run typecheck         # tsc --noEmit
 npm test                  # vitest (vazio por enquanto)
-wrangler dev              # roda local em http://localhost:8787
+npm run dev               # wrangler dev em http://localhost:8787
                           # dispare manual: curl 'http://localhost:8787/run?cron=*/5+*+*+*+*'
+npm run tail              # streaming dos logs do Worker em produção
 ```
 
 ## Custos
