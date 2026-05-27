@@ -31,7 +31,9 @@ export function createIntegrityCheck(name: string, cfg: IntegrityConfig): Check 
 
             const apiUrl = `https://api.github.com/repos/${cfg.releasesRepo}/releases/latest`;
             const apiHeaders: Record<string, string> = {
-                'User-Agent': 'site-sentinel/0.1',
+                // 'monitor' no UA faz nossa telemetria de destino conseguir
+                // marcar como is_likely_bot=1 (vide BOT_UA_REGEX).
+                'User-Agent': 'site-sentinel-monitor/0.2',
                 Accept: 'application/vnd.github+json',
             };
             if (cfg.githubToken) apiHeaders['Authorization'] = `Bearer ${cfg.githubToken}`;
@@ -66,7 +68,13 @@ export function createIntegrityCheck(name: string, cfg: IntegrityConfig): Check 
             }
             const expected = asset.digest.slice('sha256:'.length).toLowerCase();
 
-            const downloadRes = await ctx.fetch(cfg.downloadUrl, { redirect: 'follow' });
+            const downloadRes = await ctx.fetch(cfg.downloadUrl, {
+                redirect: 'follow',
+                // Mesma UA das requests pra GitHub API — pra a telemetria
+                // do destino (ex.: sonda-license Worker) marcar is_likely_bot=1
+                // e o painel filtrar facilmente.
+                headers: { 'User-Agent': 'site-sentinel-monitor/0.2' },
+            });
             if (!downloadRes.ok) {
                 return {
                     name,

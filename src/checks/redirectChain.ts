@@ -39,7 +39,15 @@ export function createRedirectChainCheck(name: string, cfg: RedirectChainConfig)
             let currentUrl = cfg.startUrl;
 
             for (let i = 0; i < maxHops; i++) {
-                const res = await ctx.fetch(currentUrl, { method: 'GET', redirect: 'manual' });
+                const res = await ctx.fetch(currentUrl, {
+                    method: 'GET',
+                    redirect: 'manual',
+                    // UA explícito pra a telemetria do destino conseguir
+                    // filtrar nossos hits (regex de bot do sonda-license bate
+                    // em 'monitor'). Sem isso, default workerd vai vazio e
+                    // os hits entram como is_likely_bot=0.
+                    headers: { 'User-Agent': 'site-sentinel-monitor/0.2' },
+                });
                 await res.body?.cancel();
                 const location = res.headers.get('Location') ?? undefined;
                 visited.push({ url: currentUrl, status: res.status, location });
