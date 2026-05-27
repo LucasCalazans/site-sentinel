@@ -1,0 +1,42 @@
+name: ci
+
+# CI do template público: typecheck + testes do core. Não deploya — deploy é
+# por-fork via branch `deploy/<app>` que tem `wrangler.toml` versionado, e é
+# disparado localmente (ex.: `scripts/update-monitor.sh` no caso do Sonda).
+# Manter deploy fora do CI evita acoplar o repo público a credenciais CF de
+# um fork específico.
+
+on:
+    push:
+        branches: [master, main]
+        paths-ignore:
+            - 'README.md'
+            - '.gitignore'
+            - 'examples/**/README.md'
+    pull_request:
+        paths-ignore:
+            - 'README.md'
+            - '.gitignore'
+            - 'examples/**/README.md'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: site-sentinel-ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    ci:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'npm'
+            - run: npm ci
+            - run: npm run typecheck
+            # npm test (vitest) fica reservado pra quando tiver suíte real —
+            # hoje não há testes do projeto (vitest sai com "no test files found").
