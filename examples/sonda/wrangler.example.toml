@@ -17,3 +17,10 @@ SONDA_DOWNLOAD_URL = "https://sonda-recover.com/downloads/sonda-setup-x64.exe"
 SONDA_RELEASES_REPO = "LucasCalazans/sonda-releases"
 PERF_WARN_MS = "2500"
 PERF_CRITICAL_MS = "8000"
+
+# Secrets (NÃO versionar — set via `npm run secret put NOME`):
+#   DISCORD_WEBHOOK_URL   webhook do canal de alerts
+#   GITHUB_TOKEN          opcional. PAT fine-grained com Contents:Read no
+#                         repo de releases. Sem ele, integrity vira flaky
+#                         por causa do quota 60 req/h por IP (Workers
+#                         compartilham IP de saída entre tenants).

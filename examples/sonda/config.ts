@@ -26,6 +26,12 @@ export interface SondaEnv extends Env {
     SONDA_RELEASES_REPO: string;
     PERF_WARN_MS: string;
     PERF_CRITICAL_MS: string;
+    // Opcional. Sem token, api.github.com é 60 req/h por IP — e Workers
+    // usam IPs de saída compartilhados entre tenants, então mesmo 1 req/h
+    // pode bater em 403 quando outro Worker no mesmo IP esgota o quota.
+    // Com PAT, sobe pra 5000 req/h por usuário. Set via:
+    //   npx wrangler secret put GITHUB_TOKEN
+    GITHUB_TOKEN?: string;
 }
 
 // Checks leves rodam em todo cron tick (ex.: */5). Integrity (que baixa
@@ -82,6 +88,7 @@ export function buildSondaChecks(env: SondaEnv, cron: string): Check[] {
                 downloadUrl: env.SONDA_DOWNLOAD_URL,
                 releasesRepo: env.SONDA_RELEASES_REPO,
                 assetName: 'sonda-setup-x64.exe',
+                githubToken: env.GITHUB_TOKEN,
             }),
         );
     }

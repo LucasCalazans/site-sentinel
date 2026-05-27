@@ -26,7 +26,8 @@ Caso real usado pra desenvolver/validar o site-sentinel. Monitora a landing est�
     ```
 
 3. `npm run secret put DISCORD_WEBHOOK_URL` (cole o webhook do canal de alerts).
-4. `npm run deploy`.
+4. `npm run secret put GITHUB_TOKEN` — opcional mas **recomendado** se `sonda.download_integrity` está ativo. Sem token, a chamada a `api.github.com` esbarra no limite de 60 req/h por IP, que Workers compartilham entre tenants e estoura mesmo com 1 req/h nossa. Use um fine-grained PAT com permissão `Contents: Read` apenas no repo de releases (read-only).
+5. `npm run deploy`.
 
 ## Adaptando pro seu projeto
 
