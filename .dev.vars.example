@@ -1,0 +1,31 @@
+# Secrets injetados pelo wrangler dev em runtime local.
+# Copie pra .dev.vars (gitignored) e preencha. Não rode 'wrangler secret put'
+# pra dev — esse arquivo substitui o secret store em dev mode.
+
+# JWT signing key. Gere com:
+#   openssl rand -hex 32
+JWT_SIGNING_KEY=
+
+# Hash PBKDF2 da senha admin. Gere com:
+#   npm run hash:password
+# (o script aceita a senha via prompt ou via primeiro arg, e cospe o hash
+# no formato `pbkdf2$<iter>$<saltB64>$<hashB64>` direto pra colar aqui).
+ADMIN_PASSWORD_HASH=
+
+# Discord webhook pra alertas quando algum check falha. Crie em:
+#   Discord → Server Settings → Integrations → Webhooks → New Webhook
+DISCORD_WEBHOOK_URL=
+
+# Cloudflare API token (Read-only) pras integrações do dashboard.
+# Dashboard → My Profile → API Tokens → Create Token → Custom.
+# Permissions: Account → Workers Scripts: Read, Account → Pages: Read,
+# Account → D1: Read, Account → Account Analytics: Read,
+# Zone → Analytics: Read, Zone → Zone: Read.
+CF_API_TOKEN=
+
+# GitHub fine-grained PAT pras integrações do dashboard E pro check de
+# integridade do Sonda (api.github.com rate-limita unauth a 60/h por IP,
+# que Workers compartilham; com PAT é 5000/h por user).
+# Permissions: Contents: Read, Actions: Read, Metadata: Read, Issues: Read,
+# Pull requests: Read. Repos: sonda, sonda-releases, site-sentinel.
+GITHUB_TOKEN=

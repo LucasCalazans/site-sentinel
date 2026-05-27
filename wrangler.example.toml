@@ -1,37 +1,56 @@
-# Template de wrangler.toml. Copie pra `wrangler.toml` (gitignored) e ajuste.
+# Template de wrangler.toml para site-sentinel v2.
 #
-# Antes do primeiro deploy:
+# Setup local (sem deploy):
 #   1. cp wrangler.example.toml wrangler.toml
-#   2. npm run login                          # = wrangler login (do node_modules)
-#   3. npm run secret put DISCORD_WEBHOOK_URL # cole o webhook do canal de alerts
-#   4. npm run deploy
+#   2. cp .dev.vars.example .dev.vars         e preencha as chaves
+#   3. npm install
+#   4. npm run db:migrate:local               cria D1 SQLite local + roda migrations
+#   5. npm run dev                            Worker em http://localhost:8787
+#   6. (em outro terminal) cd dashboard && npm install && npm run dev
 #
-# Nota: o binário `wrangler` é instalado local (node_modules/.bin/). Use os
-# scripts `npm run *` acima — `wrangler` puro só funciona se você instalou
-# global (`npm i -g wrangler`).
-#
-# Pra adicionar um app real, registre um AppConfig em src/index.ts e adicione
-# as vars dele em [vars] abaixo. Veja examples/sonda/ pra um config completo.
+# Setup deploy (depois):
+#   1. npx wrangler d1 create site-sentinel-db
+#      copie o database_id pro [[d1_databases]] abaixo
+#   2. npx wrangler d1 migrations apply site-sentinel-db --remote
+#   3. npx wrangler secret put JWT_SIGNING_KEY      (openssl rand -hex 32)
+#   4. npx wrangler secret put ADMIN_PASSWORD_HASH  (npm run hash:password)
+#   5. npx wrangler secret put DISCORD_WEBHOOK_URL
+#   6. npx wrangler secret put CF_API_TOKEN
+#   7. npx wrangler secret put GITHUB_TOKEN
+#   8. npm run deploy
 
 name = "site-sentinel"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
 
-# Cron "leve" a cada 5min: roda checks rápidos (latência, redirect chain,
-# content sentinel). Free tier do Worker dá 100k requests/dia — ~288 ticks
-# diários, com 4 checks fazendo 1-2 fetches cada, sobra muito.
-#
-# Cron horário ('0 * * * *') é a janela pra checks pesados (ex.: baixar um
-# binário inteiro e validar SHA-256). Filtre por `event.cron` no
-# buildChecks(env, cron) do seu app.
+# Cron leve a cada 5min (performance, redirect chain, content sentinels) +
+# cron horário (integrity baixa o .exe inteiro; integrações Cloudflare/GitHub
+# fazem sync de snapshots pro dashboard cachear).
 [triggers]
 crons = ["*/5 * * * *", "0 * * * *"]
 
 [vars]
-# Adicione aqui as vars públicas do seu app (URLs monitoradas, thresholds, ...).
-# Secrets (webhooks, tokens) vão via `wrangler secret put`.
-#
-# Exemplo:
-#   MY_LANDING_URL = "https://example.com"
-#   PERF_WARN_MS = "2500"
-#   PERF_CRITICAL_MS = "8000"
+# Origens permitidas pro CORS, separadas por vírgula. Em produção, troque pelo
+# domínio do dashboard (ex.: https://monitor.sonda-recover.com).
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:8787"
+
+# JWT expira em 7 dias. Override aqui pra ambientes específicos se quiser.
+JWT_EXPIRY_DAYS = "7"
+
+# IDs de Cloudflare account/zone usados pelos endpoints /api/integrations/cloudflare.
+# Pegue via `npx wrangler whoami` (account) e dashboard CF (zone, sidebar direito).
+# Públicos, não são secret.
+CF_ACCOUNT_ID = ""
+CF_ZONE_ID = ""
+
+# Repos a monitorar via /api/integrations/github. Lista CSV "owner/repo".
+GITHUB_REPOS = "LucasCalazans/sonda,LucasCalazans/sonda-releases,LucasCalazans/site-sentinel"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "site-sentinel-db"
+# Local dev usa miniflare SQLite — o database_id é ignorado. Pra deploy
+# remoto, rode `npx wrangler d1 create site-sentinel-db` e cole o ID aqui.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

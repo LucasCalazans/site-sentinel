@@ -1,149 +1,195 @@
 # site-sentinel
 
-Monitor periódico de sites rodando em Cloudflare Worker com cron triggers. Cada execução roda um conjunto de checks plugáveis e dispara alerta no Discord se algum falhar.
+Monitor de sites com dashboard. Cloudflare Worker + D1 + cron triggers + REST API + React dashboard + integrações Cloudflare/GitHub. Roda local com miniflare ou deploya pro Cloudflare Workers.
 
-Pensado como **lib reutilizável**: um único Worker pode monitorar múltiplos sites/apps — cada um expõe uma função `buildChecks(env, cron): Check[]` e é registrado em `src/index.ts`. O core (`src/`) não conhece nenhum projeto específico; configs reais vivem em `examples/` ou no seu fork.
+## O que faz
 
-## Por que existir
+1. **Checks plugáveis** — performance, content sentinel (defacement), redirect chain (DNS hijack), integrity (SHA-256 do binário vs GitHub Release). Configurados via UI ou seed SQL, persistidos em D1.
+2. **Histórico** — cada execução grava em D1, dashboard mostra séries temporais.
+3. **Alertas Discord** — checks falhando disparam webhook; histórico de alertas auditável.
+4. **Integrações** — Cloudflare (Pages, Workers, D1, Analytics) e GitHub (repos, releases, Actions runs, issues/PRs) cacheadas em D1, refrescadas pelo cron horário.
+5. **Auth básico** — password único + JWT próprio (sem dependência de OAuth provider).
 
-Quando você publica um binário num CDN ou tem uma landing apontando pra ele, três coisas podem te ferrar sem você perceber:
+## Setup local (sem deploy)
 
-1. **Binário trocado** — atacante ganha controle do hop intermediário (CF account, GitHub, registro DNS) e serve um installer com payload diferente. Usuários baixam, instalam, ficam infectados.
-2. **Redirect sequestrado** — qualquer hop da chain de download pode ser redirecionado pra outro lugar, sem você notar.
-3. **Defacement parcial** — alterar uma URL no rodapé, trocar um link de contato, embedar script malicioso na home.
+```bash
+git clone git@github.com:LucasCalazans/site-sentinel
+cd site-sentinel
 
-site-sentinel cobre os 3 cenários com checks específicos, e ainda mede latência/uptime de tabela.
+# Setup automatizado:
+./scripts/setup-local.sh
 
-## Checks disponíveis
+# Configure as chaves no .dev.vars:
+#   JWT_SIGNING_KEY        openssl rand -hex 32
+#   ADMIN_PASSWORD_HASH    npm run hash:password
+#   DISCORD_WEBHOOK_URL    (opcional pra dev — sem ele, alertas viram 'skipped')
+#   CF_API_TOKEN           (opcional — integração Cloudflare fica vazia se ausente)
+#   GITHUB_TOKEN           (opcional — integração GitHub fica vazia se ausente)
+# E em wrangler.toml [vars]:
+#   CF_ACCOUNT_ID, CF_ZONE_ID, GITHUB_REPOS
 
-| Check | Detecta |
-|---|---|
-| `integrity` | Troca de binário. Baixa o arquivo via URL pública, compara SHA-256 com `assets[].digest` do GitHub Release mais recente. |
-| `redirectChain` | DNS hijack / Worker comprometido. Segue 302s manualmente, valida que todo hop pertence a uma whitelist de hosts. |
-| `contentSentinel` | Defacement. Procura strings/regex obrigatórias no HTML e padrões proibidos comuns (`hacked by`, eval em script inline, etc.). |
-| `performance` | Latência acima de threshold ou status != 200. Multi-URL. |
+# Rodar (2 terminais):
+npm run dev                         # Worker em :8787
+(cd dashboard && npm run dev)       # Dashboard em :5173
+```
 
-Cada check é uma factory function (`createIntegrityCheck(name, config)`, etc.) que retorna um objeto `Check`. Você pode instanciar múltiplas vezes com configs diferentes.
+Abra http://localhost:5173 e logue com a senha que gerou o hash.
 
 ## Estrutura
 
 ```
-src/
-  index.ts                ← entry point (handler `scheduled` + `fetch` pra debug)
-  runner.ts               ← orquestra checks em paralelo, captura exceções
-  types.ts                ← Check, CheckResult, Severity, CheckContext
-  reporters/
-    discord.ts            ← POST pro webhook quando algum check ≠ 'ok'
-  checks/
-    integrity.ts
-    redirectChain.ts
-    contentSentinel.ts
-    performance.ts
-examples/
-  sonda/                  ← exemplo completo (landing + worker + binário)
-    config.ts
-    wrangler.example.toml
-    README.md
-wrangler.example.toml     ← template — copie pra wrangler.toml (gitignored)
+src/                      # Worker (entry point + API + cron)
+├── index.ts              # exports fetch + scheduled
+├── api/                  # router, endpoints, CORS, auth middleware
+├── auth/                 # JWT HS256 + PBKDF2 password + middleware
+├── db/                   # CRUD typed do D1 (checks, runs, alerts, integrations)
+├── checks/               # primitives de check (performance, content_sentinel,
+│                           redirect_chain, integrity) + factory que monta
+│                           Check a partir de row do D1
+├── integrations/         # wrappers REST Cloudflare/GitHub + sync periódico
+├── runtime/              # scheduled handler (cron → D1)
+├── reporters/            # Discord webhook
+└── runner.ts             # roda checks em paralelo, captura exceptions
+
+dashboard/                # React SPA (Vite + Tailwind)
+├── src/
+│   ├── pages/            # Login, Overview, ChecksList, CheckNew, CheckDetail,
+│   │                       Alerts, Github, Cloudflare
+│   ├── components/       # Sidebar, Layout, AuthGate + ui/
+│   └── lib/              # api client, auth (localStorage), format helpers
+
+migrations/               # D1 schema (rodadas via wrangler ou setup script)
+scripts/                  # hash-password, setup-local
 ```
 
-## Setup
+## Comandos
+
+| Backend (raiz) | |
+|---|---|
+| `npm run dev` | Worker local (wrangler dev) em :8787 com D1 miniflare |
+| `npm run typecheck` | tsc --noEmit |
+| `npm test` | vitest run (cobertura 90% gated em vitest.config.ts) |
+| `npm run test:coverage` | report HTML em `coverage/` |
+| `npm run db:migrate:local` | aplica migrations no D1 SQLite local |
+| `npm run db:reset:local` | apaga D1 local + reaplica migrations |
+| `npm run hash:password` | gera PBKDF2 hash pra colar em `.dev.vars` |
+| `npm run secret put NAME` | (pra deploy) seta secret no Worker em produção |
+| `npm run deploy` | (pra deploy) `wrangler deploy` |
+
+| Dashboard (`cd dashboard`) | |
+|---|---|
+| `npm run dev` | Vite dev em :5173 (proxy /api → :8787) |
+| `npm run build` | produção em `dashboard/dist/` |
+| `npm run typecheck` | tsc -b |
+| `npm test` | vitest + RTL (cobertura 90%) |
+
+## Deploy (quando estiver pronto)
 
 ```bash
-git clone https://github.com/<seu-usuario>/site-sentinel
-cd site-sentinel
-npm install
-cp wrangler.example.toml wrangler.toml
-npm run login                              # = wrangler login
-npm run secret put DISCORD_WEBHOOK_URL     # cole o webhook do canal de alerts
+# 1. Cria D1 remoto e cola o ID em wrangler.toml [[d1_databases]].database_id
+npx wrangler d1 create site-sentinel-db
+
+# 2. Aplica migrations remoto
+npx wrangler d1 migrations apply site-sentinel-db --remote
+
+# 3. Secrets (substitui o que estava em .dev.vars)
+npx wrangler secret put JWT_SIGNING_KEY
+npx wrangler secret put ADMIN_PASSWORD_HASH
+npx wrangler secret put DISCORD_WEBHOOK_URL
+npx wrangler secret put CF_API_TOKEN
+npx wrangler secret put GITHUB_TOKEN
+
+# 4. Deploy
 npm run deploy
+
+# 5. Dashboard como Pages: build local + deploy via Pages CLI ou GitHub Action.
 ```
 
-> O `wrangler` fica em `node_modules/.bin/` (instalado local pelo `npm install`). Os scripts `npm run *` acima resolvem o caminho — se preferir o binário direto, use `npx wrangler <comando>`. **Não rode `wrangler` puro**: vai dar `command not found` a menos que você tenha instalado global com `npm i -g wrangler`.
+## Tipos de check
 
-Sem nenhum app registrado, o Worker sobe mas não monitora nada (logs ficam em silêncio). Veja a próxima seção pra adicionar um.
+Cada check armazenado no D1 tem `type` discriminador e `config_json`:
 
-## Adicionar um app
+### performance
 
-1. **Crie a config**, copiando [`examples/sonda/config.ts`](./examples/sonda/config.ts) como referência:
-
-    ```ts
-    // src/configs/myapp.ts (ou onde preferir)
-    import type { Check } from '../types.ts';
-    import type { Env } from '../index.ts';
-    import { createPerformanceCheck } from '../checks/performance.ts';
-    import { createContentSentinelCheck } from '../checks/contentSentinel.ts';
-
-    export interface MyAppEnv extends Env {
-        MYAPP_URL: string;
-    }
-
-    export function buildMyAppChecks(env: MyAppEnv, cron: string): Check[] {
-        return [
-            createPerformanceCheck('myapp.performance', [
-                { url: env.MYAPP_URL, warnMs: 2500, criticalMs: 8000 },
-            ]),
-            createContentSentinelCheck('myapp.defacement', {
-                url: env.MYAPP_URL,
-                mustContain: ['MyApp', 'mailto:contact@myapp.com'],
-            }),
-        ];
-    }
-    ```
-
-2. **Registre no `src/index.ts`**:
-
-    ```ts
-    import { buildMyAppChecks } from './configs/myapp.ts';
-
-    const APPS: AppConfig[] = [
-        { name: 'myapp', buildChecks: buildMyAppChecks },
-    ];
-    ```
-
-3. **Adicione as vars** em `wrangler.toml > [vars]`.
-
-4. `npm run deploy`.
-
-## Cron split (leve vs pesado)
-
-Checks que fazem só HEAD/GET pequeno (performance, redirect chain, content sentinel) rodam em todo tick `*/5 * * * *`. Checks que baixam corpos grandes (`integrity` baixa o binário inteiro) devem rodar menos — adicione o cron `0 * * * *` e filtre dentro do seu `buildChecks`:
-
-```ts
-export function buildMyAppChecks(env: MyAppEnv, cron: string): Check[] {
-    const checks: Check[] = [/* leves */];
-
-    if (cron === '0 * * * *') {
-        checks.push(createIntegrityCheck('myapp.integrity', {/*…*/}));
-    }
-
-    return checks;
+```json
+{
+    "targets": [
+        { "url": "https://x.com", "warnMs": 2500, "criticalMs": 8000 },
+        { "url": "https://x.com/api", "warnMs": 1000, "criticalMs": 5000, "expectStatus": 200 }
+    ]
 }
 ```
 
-## Local dev
+Severities: latência > criticalMs ou status diferente do esperado → critical; > warnMs → warn.
 
-```bash
-npm run typecheck         # tsc --noEmit
-npm test                  # vitest (vazio por enquanto)
-npm run dev               # wrangler dev em http://localhost:8787
-                          # dispare manual: curl 'http://localhost:8787/run?cron=*/5+*+*+*+*'
-npm run tail              # streaming dos logs do Worker em produção
+### content_sentinel
+
+```json
+{
+    "url": "https://x.com",
+    "mustContain": [
+        "literal string",
+        { "pattern": "regex source", "flags": "i" }
+    ],
+    "mustNotContain": [
+        { "pattern": "hacked by", "flags": "i" }
+    ]
+}
 ```
+
+Severity critical quando algum mustContain falta ou algum mustNotContain aparece.
+
+### redirect_chain
+
+```json
+{
+    "startUrl": "https://x.com/download",
+    "allowedHosts": ["x.com", ".githubusercontent.com"],
+    "finalHost": ".githubusercontent.com",
+    "expectOk": true,
+    "maxHops": 10
+}
+```
+
+Severity critical se algum hop sai da whitelist, destino final difere de `finalHost`, ou estoura `maxHops`.
+
+### integrity
+
+```json
+{
+    "downloadUrl": "https://x.com/app.exe",
+    "releasesRepo": "owner/repo",
+    "assetName": "app.exe"
+}
+```
+
+Baixa o binário e compara SHA-256 com `assets[].digest` do GitHub Release `/latest`. Severity critical se diverge (= possível troca de binário). Severity warn se o release não tem digest sha256.
 
 ## Custos
 
-Free tier do Cloudflare Workers: 100k requests/dia, 10ms CPU/request (cron usa CPU-as-needed pra free, paid tier libera 30s). Com `*/5` (288 ticks/dia) + 4 checks fazendo 1-2 fetches cada → ~2300 requests/dia. Margem confortável.
+Tier free do Cloudflare:
+- 100k req/dia no Worker
+- 5 milhões reads/mês no D1 (1 GB armazenamento)
 
-Integrity baixa um payload grande (ex.: 2.5 MB) — esse é o gargalo de CPU/memória, não de quota. Roda horário (24 ticks/dia) e cabe nos 128 MB de memória do Worker.
+Crons disparam:
+- `*/5 * * * *` (288/dia): checks leves + alerts. ~5-10 req cada → ~3000 req/dia.
+- `0 * * * *` (24/dia): integrity (baixa ~2.5MB) + sync de integrações (12 endpoints CF + 4×N endpoints GH). ~50 req/dia.
+
+Total bem dentro do tier free.
+
+## Auth model
+
+Single-user (você). Password único gera JWT HS256 com 7 dias de validade (configurável via `JWT_EXPIRY_DAYS`). Token vai no `Authorization: Bearer` de toda request privada. 401 do backend dispara redirect pra `/login` no frontend.
+
+`ADMIN_PASSWORD_HASH` em PBKDF2-SHA256 (100k iterations + salt 16 bytes). Gere com `npm run hash:password`.
 
 ## Decisões / quirks
 
--   **Sem deduplicação de alertas**: cada cron tick que falha dispara webhook. Propositadamente — prefiro alerta repetido a alerta perdido. Se virar ruído, KV pra armazenar `last_alerted_at` por check.
--   **Sem histórico/dashboard**: se quiser séries temporais, plugue Cloudflare Analytics Engine ou um D1 reporter. Por design, Discord webhook é o caso mínimo viável.
--   **`fetch` segue redirects por default**; checks que precisam observar a chain (`redirectChain`) passam `redirect: 'manual'`. Cuidado ao adicionar checks novos.
--   **GitHub API sem token**: 60 req/h por IP da edge. Integrity roda 1×/h, ok. Se adicionar mais checks que batem na API, considere `wrangler secret put GITHUB_TOKEN`.
+- **Sem deduplicação de alertas**: cada cron tick que falha dispara webhook. Propositadamente — prefiro alerta repetido a alerta perdido.
+- **Snapshots de integrações são cacheados**: dashboard nunca bate direto na CF/GH API, só lê do D1 cacheado pelo cron. Resolve rate limits + dá visibilidade quando a API externa cai.
+- **GraphQL CF não usado**: usamos só REST. Workers Analytics seria GraphQL mas v1 fica com listar scripts + routes_count.
+- **Cadastro via UI é typed**: as 4 tipos têm form com defaults JSON; usuário edita JSON. Sem editor de check arbitrário em código (decisão consciente — evita eval/sandbox).
 
 ## Licença
 
-MIT (ver [LICENSE](./LICENSE)).
+MIT.

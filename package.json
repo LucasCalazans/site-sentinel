@@ -1,21 +1,27 @@
 {
     "name": "site-sentinel",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "private": true,
-    "description": "Monitor periódico de sites — checks plugáveis (integridade, redirect chain, defacement, performance) rodando em Cloudflare Worker com cron triggers e alerting via Discord webhook.",
+    "description": "Monitor periódico de sites com dashboard. Checks plugáveis + REST API + UI React + integrações Cloudflare/GitHub, rodando em Cloudflare Worker + D1 com cron triggers.",
     "type": "module",
     "scripts": {
         "deploy": "wrangler deploy",
-        "dev": "wrangler dev",
+        "dev": "wrangler dev --local --persist-to=.wrangler/state",
         "login": "wrangler login",
         "secret": "wrangler secret",
         "tail": "wrangler tail",
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "db:migrate:local": "wrangler d1 migrations apply site-sentinel-db --local",
+        "db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",
+        "hash:password": "node scripts/hash-password.mjs"
     },
     "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.5.40",
         "@cloudflare/workers-types": "^4.20250101.0",
+        "@vitest/coverage-v8": "^2.1.0",
         "typescript": "^5.5.0",
         "vitest": "^2.1.0",
         "wrangler": "^3.95.0"

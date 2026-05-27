@@ -1,5 +1,10 @@
 # Exemplo: monitorando o projeto Sonda
 
+> **NOTA (v0.2+)**: o site-sentinel agora persiste checks no D1 — esse exemplo
+> reflete o que vai pra `migrations/0005_seed_sonda.sql` (seed). O `config.ts`
+> deste diretório fica como referência histórica pra forks que ainda usam o
+> modo legado (Worker stateless, sem D1). Cadastro novo: via dashboard.
+
 Caso real usado pra desenvolver/validar o site-sentinel. Monitora a landing estática (`sonda-recover.com`), o Worker de licenciamento (`api.sonda-recover.com`) e o binário Windows distribuído via GitHub Releases.
 
 ## Checks ativados
