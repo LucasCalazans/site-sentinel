@@ -21,16 +21,24 @@ export interface FireResult {
 
 // Monta o contexto freeform passado pra rotina junto do prompt salvo dela.
 // Não é parseado pela API — vira string literal no input da sessão.
+//
+// IMPORTANTE: o ambiente remoto da rotina NÃO tem acesso de rede ao worker
+// (host fora da allowlist de saída). Então este payload é a ÚNICA fonte de
+// verdade que a rotina recebe — incluímos message + details de cada check
+// pra ela conseguir agir sem refazer o /run.
 export function buildFireText(items: Array<{ app: string; result: CheckResult }>): string {
-    const lines = items.map(
-        ({ app, result }) =>
-            `- [${result.severity.toUpperCase()}] ${app} / ${result.name}: ${result.message}`,
-    );
+    const blocks = items.map(({ app, result }) => {
+        const head = `### [${result.severity.toUpperCase()}] ${app} / ${result.name}\n${result.message}`;
+        const details = result.details
+            ? `\ndetails: ${JSON.stringify(result.details)}`
+            : '';
+        return head + details;
+    });
     const text =
-        `site-sentinel detectou ${items.length} check(s) entrando em falha agora:\n` +
-        lines.join('\n') +
-        `\n\nConfirme o estado atual via GET /run antes de agir e siga as regras da rotina ` +
-        `(um PR por causa raiz; pule se já houver PR/branch aberto pro mesmo check).`;
+        `O site-sentinel detectou ${items.length} check(s) entrando em falha agora. ` +
+        `ESTES SÃO OS DADOS REAIS E AUTORITATIVOS — use exclusivamente o que está abaixo ` +
+        `(o ambiente remoto não acessa o monitor; não tente buscar /run e não invente outros checks):\n\n` +
+        blocks.join('\n\n');
     return text.length > MAX_TEXT ? text.slice(0, MAX_TEXT - 3) + '...' : text;
 }
 
