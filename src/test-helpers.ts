@@ -42,6 +42,7 @@ export async function resetDataTables(db: D1Database): Promise<void> {
         db.prepare('DELETE FROM runs'),
         db.prepare('DELETE FROM sync_snapshots'),
         db.prepare('DELETE FROM checks'),
+        db.prepare('DELETE FROM check_state'),
         // Reset sequence pra IDs determinísticos entre testes.
         db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('alerts','runs','sync_snapshots','checks')"),
     ]);
