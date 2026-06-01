@@ -79,7 +79,8 @@ describe('runScheduled', () => {
         const summary = await runScheduled(env_, '*/5 * * * *');
         expect(summary.failing).toBe(1);
         expect(webhookCalled).toBe(true);
-        const alerts = await listAlerts(db);
+        // Filtra pelo canal discord — o canal 'routine' também grava alert.
+        const alerts = (await listAlerts(db)).filter((a) => a.channel === 'discord');
         expect(alerts).toHaveLength(1);
         expect(alerts[0]?.status).toBe('sent');
     });
@@ -99,7 +100,7 @@ describe('runScheduled', () => {
             app_label: 'test',
         });
         await runScheduled(env_, '*/5 * * * *');
-        const alerts = await listAlerts(db);
+        const alerts = (await listAlerts(db)).filter((a) => a.channel === 'discord');
         expect(alerts).toHaveLength(1);
         expect(alerts[0]?.status).toBe('failed');
         expect(alerts[0]?.error_message).toMatch(/429/);
@@ -119,15 +120,17 @@ describe('runScheduled', () => {
             '*/5 * * * *',
         );
         expect(summary.failing).toBe(1);
-        const alerts = await listAlerts(db);
+        const alerts = (await listAlerts(db)).filter((a) => a.channel === 'discord');
         expect(alerts).toHaveLength(1);
         expect(alerts[0]?.status).toBe('skipped');
     });
 
-    it('factory falha → grava run critical sem rodar fetch', async () => {
+    it('factory falha → grava run critical sem rodar o check (sem fetch do alvo)', async () => {
+        // Só conta fetch do ALVO do check — o post pro Discord (webhook
+        // configurado no env de teste) não é o que esta asserção mede.
         let fetchCalled = false;
-        stubFetch(() => {
-            fetchCalled = true;
+        stubFetch((url) => {
+            if (!url.startsWith('https://discord.com')) fetchCalled = true;
             return new Response('', { status: 200 });
         });
         // config_json inválido → factory throws.
@@ -166,5 +169,73 @@ describe('runScheduled', () => {
         const summary = await runScheduled(env_, '*/5 * * * *');
         expect(summary.total).toBe(1);
         expect(summary.results[0]?.name).toBe('frequent');
+    });
+
+    // --- Disparo event-driven de rotina (POST /fire) -----------------------
+
+    const FIRE_ENV = {
+        ROUTINE_FIRE_URL: 'https://api.anthropic.com/v1/claude_code/routines/trig_x/fire',
+        ROUTINE_FIRE_TOKEN: 'sk-ant-oat01-test',
+    };
+
+    async function createFailingCheck(name: string): Promise<void> {
+        await createCheck(db, {
+            name,
+            type: 'performance',
+            config: { targets: [{ url: 'https://broken.com', warnMs: 1000, criticalMs: 5000 }] },
+            cron_pattern: '*/5 * * * *',
+            app_label: 'sonda',
+        });
+    }
+
+    it('dispara a rotina e grava alert routine.sent na transição ok→falha', async () => {
+        let fireBody: string | undefined;
+        stubFetch((url, init) => {
+            if (url.startsWith('https://discord.com')) return new Response('ok', { status: 200 });
+            if (url.includes('/fire')) {
+                fireBody = init?.body as string;
+                return new Response(
+                    JSON.stringify({ claude_code_session_url: 'https://claude.ai/code/s1' }),
+                    { status: 200 },
+                );
+            }
+            return new Response('', { status: 500 });
+        });
+        await createFailingCheck('fail-fire');
+        await runScheduled({ ...env_, ...FIRE_ENV }, '*/5 * * * *');
+
+        // Texto do fire cita o check em falha.
+        expect(fireBody).toContain('fail-fire');
+        const routine = (await listAlerts(db)).filter((a) => a.channel === 'routine');
+        expect(routine).toHaveLength(1);
+        expect(routine[0]?.status).toBe('sent');
+    });
+
+    it('NÃO re-dispara quando o check já estava falhando (edge-trigger)', async () => {
+        let fireCount = 0;
+        stubFetch((url) => {
+            if (url.startsWith('https://discord.com')) return new Response('ok', { status: 200 });
+            if (url.includes('/fire')) {
+                fireCount++;
+                return new Response('{}', { status: 200 });
+            }
+            return new Response('', { status: 500 });
+        });
+        await createFailingCheck('persistent');
+        await runScheduled({ ...env_, ...FIRE_ENV }, '*/5 * * * *'); // ok→falha: dispara
+        await runScheduled({ ...env_, ...FIRE_ENV }, '*/5 * * * *'); // segue falhando: não
+        expect(fireCount).toBe(1);
+    });
+
+    it('grava alert routine.skipped quando ROUTINE_FIRE_URL não setado', async () => {
+        stubFetch((url) => {
+            if (url.startsWith('https://discord.com')) return new Response('ok', { status: 200 });
+            return new Response('', { status: 500 });
+        });
+        await createFailingCheck('fail-no-fire');
+        await runScheduled(env_, '*/5 * * * *'); // env_ sem ROUTINE_FIRE_*
+        const routine = (await listAlerts(db)).filter((a) => a.channel === 'routine');
+        expect(routine).toHaveLength(1);
+        expect(routine[0]?.status).toBe('skipped');
     });
 });
