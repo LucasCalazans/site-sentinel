@@ -5,9 +5,10 @@
 import type { Env } from '../api/env.ts';
 import { listEnabledForCron } from '../db/checks.ts';
 import { insertAlert } from '../db/alerts.ts';
-import { insertRun } from '../db/runs.ts';
+import { insertRun, latestRunPerCheck } from '../db/runs.ts';
 import { runChecks } from '../runner.ts';
 import { postToDiscord } from '../reporters/discord.ts';
+import { fireRoutine, buildFireText } from '../reporters/routine.ts';
 import { buildCheckFromRow } from '../checks/factory.ts';
 import { syncCloudflare, syncGitHub, type SyncResult } from '../integrations/sync.ts';
 import { prunePastSnapshots } from '../db/integrations.ts';
@@ -82,8 +83,19 @@ export async function runScheduled(env: Env, cron: string): Promise<ScheduledSum
         }
     }
 
+    // Severidade anterior por check, lida ANTES de inserir as runs novas
+    // (latestRunPerCheck olha MAX(id) por check = estado da rodada passada).
+    // Base do edge-trigger: só acordamos a rotina quando um check TRANSICIONA
+    // ok→falha, não a cada tick enquanto a falha persiste — senão um outage de
+    // 2h dispararia ~24 sessões e PRs duplicados.
+    const prevSeverity = new Map<number, string>();
+    for (const r of await latestRunPerCheck(env.DB)) {
+        prevSeverity.set(r.check_id, r.severity);
+    }
+
     // Persiste runs + alerts.
     const failingResults: CheckResult[] = [];
+    const newlyFailing: Array<{ app: string; result: CheckResult; runId: number }> = [];
     let failingCount = 0;
     for (const { row, result } of results) {
         const runRow = await insertRun(env.DB, {
@@ -96,6 +108,10 @@ export async function runScheduled(env: Env, cron: string): Promise<ScheduledSum
         if (result.severity !== 'ok') {
             failingCount++;
             failingResults.push(result);
+            // Transição ok→falha (ou primeira run do check) → candidato a fire.
+            if ((prevSeverity.get(row.id) ?? 'ok') === 'ok') {
+                newlyFailing.push({ app: row.app_label, result, runId: runRow.id });
+            }
             // Posta Discord (best-effort) e grava alert.
             if (env.DISCORD_WEBHOOK_URL) {
                 try {
@@ -119,6 +135,39 @@ export async function runScheduled(env: Env, cron: string): Promise<ScheduledSum
                     channel: 'discord',
                     status: 'skipped',
                 });
+            }
+        }
+    }
+
+    // Event-driven: acorda a rotina Claude Code UMA vez quando há check(s)
+    // entrando em falha agora. Best-effort — erro aqui não derruba o cron
+    // (Discord já alertou). Dedup de PR é responsabilidade da própria rotina.
+    if (newlyFailing.length > 0) {
+        if (env.ROUTINE_FIRE_URL && env.ROUTINE_FIRE_TOKEN) {
+            let status: 'sent' | 'failed' = 'sent';
+            let errMsg: string | null = null;
+            try {
+                await fireRoutine(
+                    env.ROUTINE_FIRE_URL,
+                    env.ROUTINE_FIRE_TOKEN,
+                    buildFireText(newlyFailing.map(({ app, result }) => ({ app, result }))),
+                );
+            } catch (err) {
+                status = 'failed';
+                errMsg = (err as Error).message;
+            }
+            for (const n of newlyFailing) {
+                await insertAlert(env.DB, {
+                    run_id: n.runId,
+                    channel: 'routine',
+                    status,
+                    error_message: errMsg,
+                });
+            }
+        } else {
+            // Sem credencial configurada → registra skipped pra observabilidade.
+            for (const n of newlyFailing) {
+                await insertAlert(env.DB, { run_id: n.runId, channel: 'routine', status: 'skipped' });
             }
         }
     }

@@ -29,3 +29,12 @@ CF_API_TOKEN=
 # Permissions: Contents: Read, Actions: Read, Metadata: Read, Issues: Read,
 # Pull requests: Read. Repos: sonda, sonda-releases, site-sentinel.
 GITHUB_TOKEN=
+
+# Disparo event-driven de rotina Claude Code (opcional). Quando um check
+# transiciona ok→falha, o worker chama o endpoint /fire da rotina pra ela
+# investigar e abrir PR. Sem estes, só o Discord é notificado.
+# Gere o token na UI: claude.ai/code/routines → editar a rotina →
+#   Add another trigger → API → Generate token (mostrado UMA vez).
+# A UI mostra a URL completa junto. Token tem prefixo sk-ant-oat01-.
+ROUTINE_FIRE_URL=
+ROUTINE_FIRE_TOKEN=

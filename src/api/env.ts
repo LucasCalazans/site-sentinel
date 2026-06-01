@@ -10,6 +10,11 @@ export interface Env {
     DISCORD_WEBHOOK_URL: string;
     CF_API_TOKEN: string;
     GITHUB_TOKEN: string;
+    // Disparo event-driven de rotina Claude Code (opcional). Ambos setados via
+    // `wrangler secret put`. Sem eles, o worker só posta Discord — não dispara
+    // rotina. URL = endpoint /fire da rotina; TOKEN = bearer por-rotina.
+    ROUTINE_FIRE_URL?: string;
+    ROUTINE_FIRE_TOKEN?: string;
     // Vars (publicas, vivem no wrangler.toml)
     CF_ACCOUNT_ID: string;
     CF_ZONE_ID: string;
